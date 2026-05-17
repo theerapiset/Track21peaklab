@@ -34,12 +34,19 @@
 <body style="font-family: &quot;Noto Sans Thai&quot;">
   <div id="root"></div>
 
+  <!-- Backend wiring · paste the Apps Script Web App URL to go live.
+       Leave commented to keep the mock-data design canvas behaviour. -->
+  <script>
+    // window.TRT_API_URL = 'https://script.google.com/macros/s/AKfycb…/exec';
+  </script>
+
   <!-- Starter components -->
   <script type="text/babel" src="design-canvas.jsx"></script>
   <script type="text/babel" src="ios-frame.jsx"></script>
   <script type="text/babel" src="tweaks-panel.jsx"></script>
 
   <!-- App -->
+  <script src="src/api.jsx"></script>
   <script type="text/babel" src="src/data.jsx"></script>
   <script type="text/babel" src="src/i18n.jsx"></script>
   <script type="text/babel" src="src/dashboard.jsx"></script>
@@ -70,17 +77,62 @@
     function App() {
       const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
       const tr = useMemo(() => tFn(t.lang), [t.lang]);
-      const snap = useMemo(() => buildSnapshot(t.scenario), [t.scenario]);
+
+      // Snapshot — mock for canned scenarios; polled live state when scenario === 'live'.
+      const [snap, setSnap] = useState(() => buildSnapshot(t.scenario === 'live' ? 'mid' : t.scenario));
+      const [liveErr, setLiveErr] = useState(null);
+      useEffect(() => {
+        if (t.scenario !== 'live') {
+          setLiveErr(null);
+          setSnap(buildSnapshot(t.scenario));
+          return;
+        }
+        let cancelled = false;
+        const tick = async () => {
+          try {
+            const live = await fetchSnapshot();
+            if (cancelled) return;
+            if (live) { setSnap(live); setLiveErr(null); }
+            else { setLiveErr('not_configured'); }
+          } catch (err) {
+            if (!cancelled) setLiveErr(err.code || 'fetch_failed');
+          }
+        };
+        tick();
+        const id = setInterval(tick, 10000);
+        return () => { cancelled = true; clearInterval(id); };
+      }, [t.scenario]);
 
       // Sample runners for mobile flow demos (use 22K mid runner)
-      const sampleRunner = useMemo(() => pickRunner(snap, '22K') || snap.runners[0], [snap]);
-      const sample29K = useMemo(() => pickRunner(snap, '29K') || snap.runners[0], [snap]);
-      const sample11K = useMemo(() => pickRunner(snap, '11K') || snap.runners[0], [snap]);
+      // Live snapshots can be empty before registrations exist — fall back to
+      // the mock roster so the runner-app artboards always have something to render.
+      const demoSnap = useMemo(() =>
+        (t.scenario === 'live' && (!snap.runners || snap.runners.length === 0))
+          ? buildSnapshot('mid') : snap,
+        [snap, t.scenario]);
+      const sampleRunner = useMemo(() => pickRunner(demoSnap, '22K') || demoSnap.runners[0], [demoSnap]);
+      const sample29K = useMemo(() => pickRunner(demoSnap, '29K') || demoSnap.runners[0], [demoSnap]);
+      const sample11K = useMemo(() => pickRunner(demoSnap, '11K') || demoSnap.runners[0], [demoSnap]);
 
       const showCheckin = (id) => t.checkpoint_method === 'all' || t.checkpoint_method === id;
 
       return (
         <div style={{ width: '100%', height: '100%' }} lang={t.lang}>
+          {t.scenario === 'live' && liveErr && (
+            <div style={{
+              position: 'fixed', top: 12, left: 12, zIndex: 50,
+              padding: '8px 12px', borderRadius: 6,
+              background: '#fef3c7', border: '1px solid #f59e0b',
+              fontFamily: '"Geist Mono", ui-monospace, monospace',
+              fontSize: 11, color: '#78350f', maxWidth: 360,
+            }}>
+              {liveErr === 'not_configured'
+                ? (t.lang === 'th'
+                    ? '⚠ Live mode · ยังไม่ได้ตั้ง window.TRT_API_URL · ดู backend/README.md'
+                    : '⚠ Live mode · window.TRT_API_URL is not set · see backend/README.md')
+                : `⚠ Live fetch failed · ${liveErr}`}
+            </div>
+          )}
           <DesignCanvas>
             {/* ──────── Race Director Dashboard ──────── */}
             <DCSection
@@ -231,6 +283,7 @@
                 ['mid',    t.lang === 'th' ? 'กลางแข่ง · 08:00'        : 'Mid · 08:00'],
                 ['late',   t.lang === 'th' ? 'มีคนหาย · 09:30'         : 'Late · alerts · 09:30'],
                 ['finish', t.lang === 'th' ? 'ทยอยเข้าเส้นชัย · 11:00' : 'Finish surge · 11:00'],
+                ['live',   t.lang === 'th' ? '🛰 Live · backend จริง'   : '🛰 Live · real backend'],
               ]}
               onChange={(v) => setTweak('scenario', v)}
             />

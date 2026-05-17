@@ -119,40 +119,31 @@ Health check.
 
 ## Wiring the prototype to this backend
 
-The HTML prototype (`Trail Run Tracker.html`) currently runs from a synthetic snapshot in `src/data.jsx`. To go live, point the runner app and the dashboard at the deployed URL:
+The prototype is already wired — you just need to plug in the URL.
 
-```js
-// somewhere globally
-const API = 'https://script.google.com/macros/s/AKfycb…/exec';
+1. **Paste the Web App URL** into the placeholder near the top of `Trail Run Tracker.html`:
+   ```html
+   <script>
+     window.TRT_API_URL = 'https://script.google.com/macros/s/AKfycb…/exec';
+   </script>
+   ```
+2. **Switch the Tweaks panel** to `🛰 Live · real backend` (the new option in the *Race state* dropdown). The dashboard now polls `?action=state` every 10s. A yellow banner appears if the URL is unset or the call fails.
 
-async function api(action, params = {}, method = 'GET') {
-  const url = `${API}?action=${action}`;
-  const opts = method === 'POST'
-    ? { method: 'POST', body: JSON.stringify(params),
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' } }
-    : {};
-  const qs = method === 'GET'
-    ? Object.entries(params).map(([k,v]) => `&${k}=${encodeURIComponent(v)}`).join('')
-    : '';
-  const r = await fetch(url + qs, opts);
-  return r.json();
-}
-```
+`src/api.jsx` defines `window.api(action, params, opts)` — used by both `src/data.jsx` (for `fetchSnapshot()`) and `src/runner-app.jsx` (for the runner action helpers). It POSTs as `text/plain` to dodge the Apps Script CORS preflight quirk.
 
-> Apps Script doesn't accept JSON `Content-Type` for `doPost` — send the body as `text/plain` and let the script parse it. This is a known Apps Script quirk, not a bug.
+**Runner action helpers** (in `src/runner-app.jsx`, also on `window.*`):
 
-**Recommended client wiring**, mirroring the screens in `src/runner-app.jsx`:
-
-| screen | call |
+| screen | helper |
 |---|---|
-| `register` (Start) | `api('register', form, 'POST')` → save `token` to `localStorage` |
-| `recognized` (next CP) | on load: `api('lookup', { token })` → fill in identity card |
-| Confirm button | `api('checkin', { token, cp }, 'POST')` |
-| Cooldown response | show `web-duplicate` artboard with `wait_ms` countdown |
-| Upgrade/downgrade response | show `web-upgrade-22` / `web-upgrade-29` / `web-downgrade-22` |
-| DNF confirm | `api('dnf', { token, cp, reason, note, pickup_requested }, 'POST')` |
-| Fallback search | `api('search', { q })` |
-| Dashboard poll | `setInterval(() => api('state').then(render), 10000)` |
+| `register` (Start) | `runnerRegister({ name, phone, distance, emergency_phone })` → stores token in localStorage |
+| `recognized` (next CP) | on load: `runnerLookup()` → identity card from server |
+| Confirm button | `runnerCheckin('a1' \| 'a2' \| 'finish')` — returns the action (`checked` / `upgrade_…` / `downgrade_…` / `finished`) |
+| Cooldown response | the helper rejects with `code === 'cooldown'` + `wait_ms` — show the `web-duplicate` artboard |
+| Upgrade/downgrade response | use `res.action` to pick `web-upgrade-22` / `web-upgrade-29` / `web-downgrade-22` |
+| DNF confirm | `runnerDnf({ cp, reason, note, pickup_requested })` |
+| Fallback search | `runnerSearch(q)` |
+
+The presentational screens (`PhoneWebRegister`, `PhoneWebRecognized`, …) still render from the demo snapshot so the design canvas keeps showing every artboard. To go fully live, swap each screen's form submit / button onClick to call the helpers above.
 
 **QR poster URLs** should embed the CP as a query string so the page knows which CP it represents:
 ```

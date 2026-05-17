@@ -325,8 +325,115 @@ function fmtDur(min) {
   return `${m}'${String(r).padStart(2,'0')}"`;
 }
 
+// ─── Live mode · convert backend state → snapshot shape ─────────────────
+// The Apps Script backend records physical-spot check-ins (start/a1/a2/finish).
+// The dashboard renders the same legs as the mock, so map repeat scans to
+// semantic ids (a1_out / a1_in, a2_in / a2_out) by occurrence order.
+function semanticCpFor(spot, occurrenceIndex) {
+  if (spot === 'a1') return occurrenceIndex === 0 ? 'a1_out' : 'a1_in';
+  if (spot === 'a2') return occurrenceIndex === 0 ? 'a2_in' : 'a2_out';
+  return spot; // start, finish
+}
+
+function liveRunnerToSnapshot(runner, checkinsForRunner, raceStartMs, nowMs) {
+  const dist = runner.distance_current || runner.distance_original || '11K';
+  const course = COURSES[dist] || COURSES['11K'];
+  const ordered = (checkinsForRunner || [])
+    .slice()
+    .sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+
+  const spotCounts = { start: 0, a1: 0, a2: 0, finish: 0 };
+  const history = [];
+  let lastCp = null, lastTime = null;
+  for (const c of ordered) {
+    const spot = (c.cp || '').toLowerCase();
+    const idx = spotCounts[spot] || 0;
+    spotCounts[spot] = idx + 1;
+    const cpId = semanticCpFor(spot, idx);
+    const tMin = (Number(c.timestamp) - raceStartMs) / 60000;
+    history.push({ id: cpId, t: tMin });
+    lastCp = cpId;
+    lastTime = tMin;
+  }
+
+  // Next CP from course legs
+  const ckptSeq = ['start', ...course.legs.map(l => l.to)];
+  const lastIdx = lastCp ? ckptSeq.indexOf(lastCp) : 0;
+  const nextCp = lastCp === 'finish' ? null : ckptSeq[lastIdx + 1] || null;
+
+  // Progress = km of the last reached checkpoint (no GPS interpolation in live mode)
+  let progressKm = 0;
+  if (lastCp && lastCp !== 'start') {
+    for (const leg of course.legs) {
+      progressKm += leg.km;
+      if (leg.to === lastCp) break;
+    }
+  }
+
+  // Status mapping
+  let status = 'on_course';
+  if (runner.status === 'finished' || lastCp === 'finish') status = 'finished';
+  else if (runner.status === 'dnf') status = 'dnf';
+  else if (!lastCp) status = 'not_started';
+  else if (lastTime != null && (nowMs - raceStartMs) / 60000 - lastTime > 45) status = 'slow';
+
+  const [firstName, ...rest] = (runner.name || '').trim().split(/\s+/);
+  const lastName = rest.join(' ');
+  // Synthesize a bib from the phone tail so existing roster UI keeps working
+  const bib = String(runner.phone || runner.id || '').replace(/\D/g, '').slice(-3).padStart(3, '0');
+
+  return {
+    bib,
+    firstName: firstName || runner.name || '(unnamed)',
+    lastName,
+    distance: dist,
+    registeredDistance: runner.distance_original || dist,
+    course,
+    emergency: runner.emergency_phone || '',
+    basePace: 7, hillPenalty: 1, archetype: 'normal',
+    status, lastCp, nextCp, lastTime, progressKm,
+    expectedKm: progressKm,
+    history, eta: null, plan: null,
+    // Pass through backend identity for runner-app screens
+    _id: runner.id, _token: runner.token, _phone: runner.phone,
+  };
+}
+
+function buildSnapshotFromLiveState(state, raceStartMs) {
+  const nowMs = (state && state.time) || Date.now();
+  const start = raceStartMs || (Math.min.apply(null,
+    (state.checkins || []).filter(c => (c.cp || '').toLowerCase() === 'start')
+      .map(c => Number(c.timestamp))
+      .concat([nowMs]))) || nowMs;
+
+  const byRunner = new Map();
+  (state.checkins || []).forEach(c => {
+    if (!byRunner.has(c.runner_id)) byRunner.set(c.runner_id, []);
+    byRunner.get(c.runner_id).push(c);
+  });
+
+  return {
+    raceMinutes: (nowMs - start) / 60000,
+    scenario: 'live',
+    scenarioLabel: 'Live · backend',
+    runners: (state.runners || []).map(r =>
+      liveRunnerToSnapshot(r, byRunner.get(r.id) || [], start, nowMs)),
+    _live: true,
+    _serverTime: nowMs,
+  };
+}
+
+// Fetch from backend and return a snapshot in the same shape as buildSnapshot().
+// Returns null if the backend isn't configured (caller can fall back to mock).
+async function fetchSnapshot() {
+  if (!window.apiIsConfigured || !window.apiIsConfigured()) return null;
+  const state = await window.api('state');
+  return buildSnapshotFromLiveState(state);
+}
+
 Object.assign(window, {
   COURSES, CHECKPOINTS, CHECKPOINT_COOLDOWN, ELEVATION_KM, elevationAt,
   ROSTER,
-  buildSnapshot, fmtMin, fmtClock, fmtDur,
+  buildSnapshot, fetchSnapshot, buildSnapshotFromLiveState,
+  fmtMin, fmtClock, fmtDur,
 });

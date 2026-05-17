@@ -4,6 +4,48 @@
 
 const { useState: useS } = React;
 
+// ─── Backend wiring ─────────────────────────────────────────────────────
+// Thin action helpers used by the live screens. Each one calls window.api
+// (defined in api.jsx) with the shape the Apps Script backend expects.
+// localStorage carries the runner token across page loads, mirroring the
+// "the browser remembered me" recognized screen in the design.
+
+const RUNNER_TOKEN_KEY = 'trt.runner.token';
+
+function getRunnerToken()  { try { return localStorage.getItem(RUNNER_TOKEN_KEY) || ''; } catch (_) { return ''; } }
+function setRunnerToken(t) { try { localStorage.setItem(RUNNER_TOKEN_KEY, t); } catch (_) {} }
+function clearRunnerToken(){ try { localStorage.removeItem(RUNNER_TOKEN_KEY); } catch (_) {} }
+
+async function runnerRegister({ name, phone, distance, emergency_phone }) {
+  const res = await window.api('register', { name, phone, distance, emergency_phone }, { method: 'POST' });
+  if (res && res.token) setRunnerToken(res.token);
+  return res;
+}
+
+async function runnerCheckin(cp) {
+  const token = getRunnerToken();
+  if (!token) { const e = new Error('no_token'); e.code = 'no_token'; throw e; }
+  return window.api('checkin', { token, cp }, { method: 'POST' });
+}
+
+async function runnerLookup() {
+  const token = getRunnerToken();
+  if (!token) return null;
+  try { return await window.api('lookup', { token }); }
+  catch (e) { if (e.code === 'unknown_runner') clearRunnerToken(); throw e; }
+}
+
+async function runnerDnf({ cp, reason, note, pickup_requested }) {
+  const token = getRunnerToken();
+  if (!token) { const e = new Error('no_token'); e.code = 'no_token'; throw e; }
+  return window.api('dnf', { token, cp, reason, note, pickup_requested }, { method: 'POST' });
+}
+
+async function runnerSearch(q) {
+  const res = await window.api('search', { q });
+  return (res && res.results) || [];
+}
+
 const RA = {
   bg: '#f5f1e8',
   surface: '#ffffff',
@@ -2024,4 +2066,7 @@ function SafariChrome({ url }) {
 
 Object.assign(window, {
   RunnerStaffScan, RunnerSelfScan, RunnerGPSAuto, RunnerManual, RunnerWebFlow, FakeQR, RA,
+  // Backend action helpers (see top of file)
+  runnerRegister, runnerCheckin, runnerLookup, runnerDnf, runnerSearch,
+  getRunnerToken, setRunnerToken, clearRunnerToken,
 });
