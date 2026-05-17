@@ -33,24 +33,9 @@
     return `${base}?action=${encodeURIComponent(action)}${qs ? '&' + qs : ''}`;
   }
 
-  // Apps Script Web App accepts POST as a CORS "simple request" only when the
-  // Content-Type is one of: application/x-www-form-urlencoded, multipart/form-data,
-  // or text/plain. We use form-urlencoded because (a) it avoids the redirect-CORS
-  // quirk that bites text/plain POSTs from a different origin (e.g. pages.dev →
-  // script.google.com) and (b) Apps Script reads the fields directly from
-  // e.parameter, no JSON.parse on the body needed.
-  async function api(action, params, opts) {
-    if (!configured()) {
-      const err = new Error('not_configured');
-      err.code = 'not_configured';
-      throw err;
-    }
-    const method = (opts && opts.method) || (params && Object.keys(params).length ? 'POST' : 'GET');
-    const timeout = (opts && opts.timeout) || DEFAULT_TIMEOUT_MS;
-
+  async function fetchOnce(method, action, params, timeout) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
-
     let url, init;
     if (method === 'GET') {
       url = buildUrl(action, params || {});
@@ -69,22 +54,48 @@
         body: form.toString(),
       };
     }
-
     try {
       const res = await fetch(url, init);
       const text = await res.text();
       let body;
-      try { body = JSON.parse(text); } catch (_) { body = { ok: false, error: 'bad_json', raw: text.slice(0, 240) }; }
+      try { body = JSON.parse(text); } catch (_) { body = { ok: false, error: 'bad_json', raw: text.slice(0, 240), status: res.status }; }
       if (!body.ok) {
         const err = new Error(body.error || 'api_error');
         err.code = body.error || 'api_error';
         err.payload = body;
+        err.status = res.status;
         throw err;
       }
       return body;
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  // Try POST first (the canonical Apps Script pattern). If it fails with a
+  // network/CORS error (TypeError from fetch) — not a server-reported error —
+  // retry once via GET. Apps Script's doGet handles the same actions, so this
+  // is the most resilient option for browsers blocked by quirky redirect-CORS.
+  async function api(action, params, opts) {
+    if (!configured()) {
+      const err = new Error('not_configured');
+      err.code = 'not_configured';
+      throw err;
+    }
+    const wantPost = (opts && opts.method && opts.method !== 'GET')
+      || (params && Object.keys(params).length > 0 && !(opts && opts.method === 'GET'));
+    const timeout = (opts && opts.timeout) || DEFAULT_TIMEOUT_MS;
+
+    if (wantPost) {
+      try { return await fetchOnce('POST', action, params, timeout); }
+      catch (err) {
+        // Server-reported error — propagate as-is, don't retry.
+        if (err && err.code && err.code !== 'bad_json') throw err;
+        // Network/CORS/timeout — fall back to GET.
+        if (typeof console !== 'undefined') console.warn('[trt] POST failed, retrying as GET:', err && err.message);
+      }
+    }
+    return fetchOnce('GET', action, params, timeout);
   }
 
   Object.assign(window, {
