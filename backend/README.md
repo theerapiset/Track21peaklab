@@ -155,6 +155,28 @@ https://your-domain.example/checkin.html?cp=a2
 https://your-domain.example/checkin.html?cp=finish
 ```
 
+## Dashboard auth (optional shared secret)
+
+Runner endpoints stay open (anyone scanning a QR poster can register / check in), but you can lock `?action=state` behind a shared secret so only the Race Director's machine can drain the full roster.
+
+1. In Apps Script: `Project Settings → Script Properties → Add property`
+   - Key: `STATE_KEY`
+   - Value: any string the RD will paste (e.g. `rayong2026-dash`)
+2. Set the matching value in `Trail Run Tracker.html`:
+   ```html
+   <script>
+     window.TRT_DASHBOARD_KEY = 'rayong2026-dash';
+   </script>
+   ```
+3. Calls to `state` without (or with the wrong) key now return `{ ok: false, error: 'unauthorized' }`.
+
+Skip both steps if you don't care — the data isn't very sensitive and obscurity-by-URL is usually fine for a single-day training event.
+
+## Deploy artefacts in this repo
+
+- **`runner/index.html`** — standalone runner page that mounts `<LiveRunnerApp/>` with `?cp=…` read from the URL. Host this on any static server (Cloudflare Pages / GitHub Pages / Netlify). Paste the Web App URL into the `window.TRT_API_URL` block at the top and you're live.
+- **`posters/qr-posters.html`** — printable A4 QR posters (Start / A1 / A2 / Finish). Open the file, paste the deployed runner URL in the *Base URL* field, click *Update QR*, then *Print* — one A4 page per CP. The QR encodes `<base>?cp=<id>` so a single hosted runner page handles all four posters.
+
 ## Operational notes
 
 - **Apps Script quotas:** 20k calls/day on a free Google account. 150 runners × ~6 scans + RD dashboard polling fits comfortably. If you're worried, raise the dashboard poll interval to 15s.

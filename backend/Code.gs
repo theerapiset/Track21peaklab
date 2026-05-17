@@ -294,7 +294,11 @@ function apiDnf(p) {
 
 // ───────────────────────── API: state (dashboard) ─────────────────────────
 
-function apiState(_p) {
+function apiState(p) {
+  const required = PropertiesService.getScriptProperties().getProperty('STATE_KEY');
+  if (required && (p.key || '') !== required) {
+    return { ok: false, error: 'unauthorized' };
+  }
   const runners = listRunners();
   const checkins = listAllCheckins();
   const dnf = listAllDnf();

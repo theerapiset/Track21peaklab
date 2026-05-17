@@ -427,7 +427,8 @@ function buildSnapshotFromLiveState(state, raceStartMs) {
 // Returns null if the backend isn't configured (caller can fall back to mock).
 async function fetchSnapshot() {
   if (!window.apiIsConfigured || !window.apiIsConfigured()) return null;
-  const state = await window.api('state');
+  const params = window.TRT_DASHBOARD_KEY ? { key: window.TRT_DASHBOARD_KEY } : {};
+  const state = await window.api('state', params);
   return buildSnapshotFromLiveState(state);
 }
 

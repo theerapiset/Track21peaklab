@@ -12,7 +12,7 @@
 
 const { useState: useS2, useEffect: useE2, useMemo: useM2, useRef: useR2 } = React;
 
-function LiveRunnerApp({ lang = 'th', cp: cpProp = 'a1' }) {
+function LiveRunnerApp({ lang = 'th', cp: cpProp = 'a1', showChrome = true }) {
   const th = lang === 'th';
   const cp = (cpProp || readCpFromUrl()).toLowerCase();
   const cpLabel = cp === 'start' ? (th ? 'จุดสตาร์ท' : 'Start')
@@ -109,7 +109,7 @@ function LiveRunnerApp({ lang = 'th', cp: cpProp = 'a1' }) {
   return (
     <div style={{ height: '100%', background: '#fafaf8', display: 'flex',
       flexDirection: 'column', fontFamily: th ? '"Noto Sans Thai", ' + RA.font : RA.font }}>
-      <SafariChrome url={`trail.run/cp/${cp}`}/>
+      {showChrome && <SafariChrome url={`trail.run/cp/${cp}`}/>}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {mode === 'loading' && <LoadingPanel th={th}/>}
         {mode === 'error' && <ErrorPanel th={th} code={errMsg}/>}
