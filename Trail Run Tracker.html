@@ -51,6 +51,7 @@
   <script type="text/babel" src="src/i18n.jsx"></script>
   <script type="text/babel" src="src/dashboard.jsx"></script>
   <script type="text/babel" src="src/runner-app.jsx"></script>
+  <script type="text/babel" src="src/runner-live.jsx"></script>
 
   <script type="text/babel">
     const { useState, useMemo, useEffect } = React;
@@ -160,6 +161,16 @@
               subtitle={t.lang === 'th'
                 ? 'จุดสตาร์ท: ลงทะเบียนครั้งเดียว · จุดถัดไป: กดยืนยัน · ✨ ระบบปรับระยะอัตโนมัติตาม CP ที่ผ่านจริง (11K↔22K↔29K) · กันสแกนซ้ำ: A1/A2 รอ 60 นาที · ไม่ต้องลงแอพ'
                 : 'Start: register once · next CPs: one-tap confirm · ✨ Auto-adjust distance based on actual CPs hit (11K↔22K↔29K) · double-scan guard: 60min · no app'}>
+              <DCArtboard id="live-app" label="⚡ Live · ใช้งานจริง (wired to backend)" width={420} height={900}>
+                <IOSDevice width={402} height={874} title="Safari · Live">
+                  <LiveRunnerApp lang={t.lang} cp="a1"/>
+                </IOSDevice>
+              </DCArtboard>
+              <DCArtboard id="live-start" label="⚡ Live · จุดสตาร์ท (register form)" width={420} height={900}>
+                <IOSDevice width={402} height={874} title="Safari · Live">
+                  <LiveRunnerApp lang={t.lang} cp="start"/>
+                </IOSDevice>
+              </DCArtboard>
               <DCArtboard id="web-1" label="1 · Camera sees QR poster" width={420} height={900}>
                 <IOSDevice width={402} height={874} title="Camera">
                   <RunnerWebFlow runner={sample29K} t={tr} lang={t.lang} step="camera"/>

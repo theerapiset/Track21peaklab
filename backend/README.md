@@ -143,7 +143,9 @@ The prototype is already wired — you just need to plug in the URL.
 | DNF confirm | `runnerDnf({ cp, reason, note, pickup_requested })` |
 | Fallback search | `runnerSearch(q)` |
 
-The presentational screens (`PhoneWebRegister`, `PhoneWebRecognized`, …) still render from the demo snapshot so the design canvas keeps showing every artboard. To go fully live, swap each screen's form submit / button onClick to call the helpers above.
+**`<LiveRunnerApp lang cp />` (src/runner-live.jsx)** is the working runner page — every input, button, and state transition is wired to the helpers above. Two artboards at the top of the recommended section render it (`⚡ Live · A1` and `⚡ Live · Start`). The original presentational `PhoneWeb*` screens are kept for the design canvas demos.
+
+To deploy the runner page on its own domain, host a tiny HTML that loads `src/api.jsx`, `src/runner-app.jsx`, `src/runner-live.jsx` and mounts `<LiveRunnerApp/>`. The component reads `?cp=…` from the URL, so a single HTML works for every poster.
 
 **QR poster URLs** should embed the CP as a query string so the page knows which CP it represents:
 ```
