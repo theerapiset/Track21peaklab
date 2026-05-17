@@ -57,30 +57,36 @@ function LiveRunnerApp({ lang = 'th', cp: cpProp = 'a1', showChrome = true }) {
 
   async function handleRegister(form) {
     setMode('submitting'); setErrMsg('');
+    console.log('[trt] register submit', form);
     try {
       const res = await runnerRegister(form);
+      console.log('[trt] register ok', res);
       setIdentity(res.runner);
       setLastResult(res);
       setMode('success');
     } catch (err) {
-      setErrMsg(err.code || 'register_failed');
+      console.error('[trt] register failed:', err, 'code=', err && err.code, 'payload=', err && err.payload);
+      setErrMsg((err && err.code) || (err && err.message) || 'register_failed');
       setMode('register');
     }
   }
 
   async function handleConfirmCheckin() {
     setMode('submitting'); setErrMsg('');
+    console.log('[trt] checkin submit', cp);
     try {
       const res = await runnerCheckin(cp);
+      console.log('[trt] checkin ok', res);
       setIdentity(res.runner);
       setLastResult(res);
       setMode('success');
     } catch (err) {
-      if (err.code === 'cooldown') {
+      console.error('[trt] checkin failed:', err, 'code=', err && err.code);
+      if (err && err.code === 'cooldown') {
         setLastResult(err.payload);
         setMode('cooldown');
       } else {
-        setErrMsg(err.code || 'checkin_failed');
+        setErrMsg((err && err.code) || (err && err.message) || 'checkin_failed');
         setMode('recognized');
       }
     }
