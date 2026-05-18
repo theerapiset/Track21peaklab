@@ -647,8 +647,13 @@ function ProgressBar({ pct, expPct, r, t }) {
 }
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────
-function Dashboard({ scenario, t, lang, layout = 'hybrid', cutoffMin = 0 }) {
-  const snap = useMemo(() => buildSnapshot(scenario), [scenario]);
+function Dashboard({ scenario, snap: providedSnap, t, lang, layout = 'hybrid', cutoffMin = 0 }) {
+  // If a live snapshot is passed in, use it; otherwise build a mock from the
+  // named scenario (the design-canvas use case).
+  const snap = useMemo(
+    () => providedSnap || buildSnapshot(scenario),
+    [providedSnap, scenario]
+  );
   const [hover, setHover] = useState(null);
   const [filters, setFilters] = useState({ dist: null, status: null, search: '' });
 

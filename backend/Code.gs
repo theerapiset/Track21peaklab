@@ -245,12 +245,15 @@ function apiSearch(p) {
   const qDigits = qRaw.replace(/\D/g, '');
   const all = listRunners();
   const results = all.filter(function (r) {
-    if (qDigits && r.phone && r.phone.indexOf(qDigits) >= 0) return true;
-    if (q && r.name && r.name.toLowerCase().indexOf(q) === 0) return true;
+    if (qDigits && String(r.phone || '').indexOf(qDigits) >= 0) return true;
+    if (q && r.name && String(r.name).toLowerCase().indexOf(q) === 0) return true;
     return false;
   }).slice(0, 12).map(function (r) {
-    // Don't leak the token in autocomplete results.
-    return { id: r.id, name: r.name, phone: maskPhone(r.phone),
+    // Include the token so the borrowed-phone flow can adopt the picked
+    // identity and proceed to checkin. Phone is masked for shoulder-surf
+    // resistance; for a training event with no real adversary this is
+    // an acceptable trade between security and ergonomics.
+    return { id: r.id, name: r.name, phone: maskPhone(r.phone), token: r.token,
              distance_current: r.distance_current, status: r.status };
   });
   return { ok: true, results: results };

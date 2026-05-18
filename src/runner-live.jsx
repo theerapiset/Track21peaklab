@@ -105,11 +105,22 @@ function LiveRunnerApp({ lang = 'th', cp: cpProp = 'a1', showChrome = true }) {
   }
 
   function handleNotMe() { clearRunnerToken(); setIdentity(null); setMode('search'); }
-  function handlePicked() {
-    // Picked from search uses the picked runner's identity via lookup result
-    runnerLookup().then(res => {
-      if (res) { setIdentity(res.runner); setMode('recognized'); }
-    }).catch(() => setMode('search'));
+  function handlePicked(picked) {
+    // Borrowed-phone path: adopt the picked runner's token + identity, then
+    // hand off to the recognized panel so the user just taps confirm.
+    if (!picked || !picked.token) { setErrMsg('cannot_claim_identity'); return; }
+    setMode('submitting');
+    setRunnerToken(picked.token);
+    runnerLookup()
+      .then(res => {
+        if (res && res.runner) { setIdentity(res.runner); setMode('recognized'); }
+        else { setMode('search'); }
+      })
+      .catch(err => {
+        console.error('[trt] picked lookup failed:', err);
+        setErrMsg((err && err.code) || 'lookup_failed');
+        setMode('search');
+      });
   }
 
   return (
