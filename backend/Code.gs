@@ -57,7 +57,8 @@ function handle(e, method) {
       case 'search':   result = apiSearch(params);   break;
       case 'dnf':      result = apiDnf(params);      break;
       case 'state':    result = apiState(params);    break;
-      case 'ping':     result = { ok: true, time: now() }; break;
+      case 'admin':    result = apiAdmin(params);    break;
+      case 'ping':     result = { ok: true, time: now(), state: liveState() }; break;
       default:
         return json({ ok: false, error: 'unknown_action', action: action }, 400);
     }
@@ -79,9 +80,27 @@ function json(obj, _status) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// ───────────────────────── Live state gate ─────────────────────────
+
+function liveState() {
+  return PropertiesService.getScriptProperties().getProperty('LIVE_STATE') || 'open';
+}
+function isOpen() { return liveState() !== 'closed'; }
+
+function closedResponse() {
+  const props = PropertiesService.getScriptProperties();
+  return {
+    ok: false,
+    error: 'race_closed',
+    message_th: props.getProperty('CLOSED_MESSAGE_TH') || 'ระบบยังไม่เปิดให้เช็คอิน · กรุณารอประกาศจากทีมงาน',
+    message_en: props.getProperty('CLOSED_MESSAGE_EN') || 'Check-in is not open yet · please wait for the staff announcement',
+  };
+}
+
 // ───────────────────────── API: register ─────────────────────────
 
 function apiRegister(p) {
+  if (!isOpen()) return closedResponse();
   const name  = (p.name  || '').toString().trim();
   const phone = normalizePhone(p.phone);
   const distance = (p.distance || '').toString().toUpperCase();
@@ -135,6 +154,7 @@ function apiRegister(p) {
 // ───────────────────────── API: checkin ─────────────────────────
 
 function apiCheckin(p) {
+  if (!isOpen()) return closedResponse();
   const token = (p.token || '').toString();
   const cp    = (p.cp    || '').toString().toLowerCase();
   if (!token) return { ok: false, error: 'token_required' };
@@ -297,6 +317,7 @@ function apiSearch(p) {
 // ───────────────────────── API: DNF ─────────────────────────
 
 function apiDnf(p) {
+  if (!isOpen()) return closedResponse();
   const token = (p.token || '').toString();
   const cp = (p.cp || '').toString().toLowerCase();
   const reason = (p.reason || '').toString();
@@ -341,6 +362,100 @@ function apiState(p) {
   const checkins = listAllCheckins();
   const dnf = listAllDnf();
   return { ok: true, time: now(), runners: runners, checkins: checkins, dnf: dnf };
+}
+
+// ───────────────────────── API: admin ─────────────────────────
+//
+// All admin operations require the ADMIN_KEY script property to be set
+// AND the caller to pass the matching key. Once configured, the runner
+// flow is unaffected — admin only governs live-state and reset.
+
+function apiAdmin(p) {
+  const adminKey = PropertiesService.getScriptProperties().getProperty('ADMIN_KEY');
+  if (!adminKey) return { ok: false, error: 'admin_not_configured' };
+  if ((p.key || '') !== adminKey) return { ok: false, error: 'unauthorized' };
+
+  const op = p.op || 'status';
+  switch (op) {
+    case 'status': return apiAdminStatus();
+    case 'set_state': return apiAdminSetState(p);
+    case 'reset': return apiAdminReset(p);
+    case 'set_messages': return apiAdminSetMessages(p);
+    default: return { ok: false, error: 'unknown_op', op: op };
+  }
+}
+
+function apiAdminStatus() {
+  const runners = listRunners();
+  const checkins = listAllCheckins();
+  const dnf = listAllDnf();
+  const props = PropertiesService.getScriptProperties();
+  return {
+    ok: true,
+    state: liveState(),
+    counts: {
+      runners: runners.length,
+      checkins: checkins.length,
+      dnf: dnf.length,
+      finished: runners.filter(function (r) { return r.status === 'finished'; }).length,
+      dnf_runners: runners.filter(function (r) { return r.status === 'dnf'; }).length,
+      active: runners.filter(function (r) { return r.status === 'active'; }).length,
+    },
+    messages: {
+      th: props.getProperty('CLOSED_MESSAGE_TH') || '',
+      en: props.getProperty('CLOSED_MESSAGE_EN') || '',
+    },
+  };
+}
+
+function apiAdminSetState(p) {
+  const state = p.state === 'closed' ? 'closed' : 'open';
+  PropertiesService.getScriptProperties().setProperty('LIVE_STATE', state);
+  return { ok: true, state: state };
+}
+
+function apiAdminSetMessages(p) {
+  const props = PropertiesService.getScriptProperties();
+  if (typeof p.message_th === 'string') props.setProperty('CLOSED_MESSAGE_TH', p.message_th);
+  if (typeof p.message_en === 'string') props.setProperty('CLOSED_MESSAGE_EN', p.message_en);
+  return { ok: true };
+}
+
+function apiAdminReset(p) {
+  if (p.confirm !== 'YES') return { ok: false, error: 'confirm_required' };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const archived = archiveAndReset();
+    return { ok: true, archived: archived };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function archiveAndReset() {
+  const id = SHEET_ID || PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  if (!id) throw new Error('SHEET_ID not set');
+  const ss = SpreadsheetApp.openById(id);
+  const d = new Date();
+  const pad = function (n) { return String(n).padStart(2, '0'); };
+  const ts = '' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '_' +
+             pad(d.getHours()) + pad(d.getMinutes());
+  const result = { timestamp: ts, archives: {} };
+  [SHEETS.runners, SHEETS.checkins, SHEETS.dnf].forEach(function (name) {
+    const main = ss.getSheetByName(name);
+    if (!main) return;
+    const lastRow = main.getLastRow();
+    const lastCol = main.getLastColumn();
+    if (lastRow <= 1 || lastCol < 1) { result.archives[name] = 0; return; }
+    const data = main.getRange(1, 1, lastRow, lastCol).getValues();
+    const archiveName = name + '_archive_' + ts;
+    const archive = ss.insertSheet(archiveName);
+    archive.getRange(1, 1, data.length, data[0].length).setValues(data);
+    main.getRange(2, 1, lastRow - 1, lastCol).clearContent();
+    result.archives[name] = lastRow - 1;
+  });
+  return result;
 }
 
 // ───────────────────────── Sheet helpers ─────────────────────────

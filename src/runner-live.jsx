@@ -66,7 +66,11 @@ function LiveRunnerApp({ lang = 'th', cp: cpProp = 'a1', showChrome = true }) {
       setMode('success');
     } catch (err) {
       console.error('[trt] register failed:', err, 'code=', err && err.code, 'payload=', err && err.payload);
-      setErrMsg((err && err.code) || (err && err.message) || 'register_failed');
+      let msg = (err && err.code) || (err && err.message) || 'register_failed';
+      if (err && err.code === 'race_closed' && err.payload) {
+        msg = (th ? err.payload.message_th : err.payload.message_en) || msg;
+      }
+      setErrMsg(msg);
       setMode('register');
     }
   }
@@ -86,7 +90,11 @@ function LiveRunnerApp({ lang = 'th', cp: cpProp = 'a1', showChrome = true }) {
         setLastResult(err.payload);
         setMode('cooldown');
       } else {
-        setErrMsg((err && err.code) || (err && err.message) || 'checkin_failed');
+        let msg = (err && err.code) || (err && err.message) || 'checkin_failed';
+        if (err && err.code === 'race_closed' && err.payload) {
+          msg = (th ? err.payload.message_th : err.payload.message_en) || msg;
+        }
+        setErrMsg(msg);
         setMode('recognized');
       }
     }
@@ -889,7 +897,7 @@ function SearchPanel({ th, cpLabel, onBack, onPicked }) {
   );
 }
 
-function ErrorRow({ th, code }) {
+function ErrorRow({ th, code, payload }) {
   const map = {
     cooldown:        th ? 'เพิ่งสแกนไปเมื่อสักครู่' : 'Just scanned a moment ago',
     unknown_runner:  th ? 'ไม่พบนักวิ่ง' : 'Runner not found',
@@ -898,12 +906,16 @@ function ErrorRow({ th, code }) {
     invalid_distance:th ? 'เลือกระยะที่ลงวิ่ง' : 'Pick a distance',
     invalid_cp:      th ? 'CP ไม่ถูกต้อง' : 'Invalid CP',
     not_configured:  th ? 'ยังไม่ได้ตั้งค่า backend' : 'Backend not configured',
+    race_closed:     th ? 'ระบบยังไม่เปิดให้เช็คอิน · กรุณารอประกาศจากทีมงาน'
+                        : 'Check-in is not open yet · please wait for the staff announcement',
   };
+  // Server may return a custom localised message in the error payload.
+  const customMsg = payload && (th ? payload.message_th : payload.message_en);
   return (
     <div style={{ padding: '10px 12px', background: '#fef2f2',
       border: '1px solid #fca5a5', borderRadius: 6,
       fontFamily: RA.mono, fontSize: 11, color: '#7f1d1d' }}>
-      ⚠ {map[code] || code}
+      ⚠ {customMsg || map[code] || code}
     </div>
   );
 }

@@ -412,12 +412,29 @@ function buildSnapshotFromLiveState(state, raceStartMs) {
     byRunner.get(c.runner_id).push(c);
   });
 
+  const runners = (state.runners || []).map(r =>
+    liveRunnerToSnapshot(r, byRunner.get(r.id) || [], start, nowMs));
+
+  // Compute rank within distance for finished runners — sorted by their
+  // actual finish-checkin timestamp ascending, tie-broken by runner id.
+  const finishByDist = {};
+  runners.forEach(r => {
+    if (r.status === 'finished') {
+      const key = r.distance || '?';
+      (finishByDist[key] = finishByDist[key] || []).push(r);
+    }
+  });
+  Object.values(finishByDist).forEach(arr => {
+    arr.sort((a, b) => (a.lastTime || 0) - (b.lastTime || 0) ||
+                       String(a._id || '').localeCompare(String(b._id || '')));
+    arr.forEach((r, i) => { r.rank = i + 1; r.totalFinishers = arr.length; });
+  });
+
   return {
     raceMinutes: (nowMs - start) / 60000,
     scenario: 'live',
     scenarioLabel: 'Live · backend',
-    runners: (state.runners || []).map(r =>
-      liveRunnerToSnapshot(r, byRunner.get(r.id) || [], start, nowMs)),
+    runners: runners,
     _live: true,
     _serverTime: nowMs,
   };

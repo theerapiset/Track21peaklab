@@ -556,8 +556,16 @@ function RosterRow({ r, t, hover, setHover }) {
         borderBottom: `1px solid ${D.border}`,
       }}>
       <td style={td()}>
-        <span style={{ fontFamily: D.mono, fontWeight: 600, fontSize: 12,
-          letterSpacing: '0.04em' }}>{r.bib}</span>
+        {r.rank ? (
+          <span style={{ fontFamily: D.mono, fontWeight: 700, fontSize: 13,
+            color: D.brandDk, fontStyle: 'italic' }}
+            title={r.totalFinishers ? `อันดับ ${r.rank} จาก ${r.totalFinishers} ใน ${r.distance}` : ''}>
+            #{r.rank}
+          </span>
+        ) : (
+          <span style={{ fontFamily: D.mono, fontWeight: 600, fontSize: 12,
+            letterSpacing: '0.04em' }}>{r.bib}</span>
+        )}
       </td>
       <td style={td()}>{r.firstName} {r.lastName}</td>
       <td style={td()}>

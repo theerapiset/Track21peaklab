@@ -59,7 +59,7 @@ const STR = {
     // Roster
     roster: 'รายชื่อ',
     search_ph: 'ค้นหา bib / ชื่อ',
-    h_bib:'BIB', h_name:'ชื่อ', h_dist:'ระยะ', h_progress:'ความคืบหน้า',
+    h_bib:'BIB / อันดับ', h_name:'ชื่อ', h_dist:'ระยะ', h_progress:'ความคืบหน้า',
     h_last_cp:'จุดล่าสุด', h_eta:'ETA ถัดไป', h_status:'สถานะ',
 
     // Mobile
@@ -143,7 +143,7 @@ const STR = {
 
     roster: 'Roster',
     search_ph: 'search bib / name',
-    h_bib:'BIB', h_name:'NAME', h_dist:'DIST', h_progress:'PROGRESS',
+    h_bib:'BIB / RANK', h_name:'NAME', h_dist:'DIST', h_progress:'PROGRESS',
     h_last_cp:'LAST CP', h_eta:'ETA NEXT', h_status:'STATUS',
 
     m_bib_title: 'Runner pass',
