@@ -207,7 +207,7 @@ function apiCheckin(p) {
     };
     appendRow(SHEETS.checkins, CHECKIN_COLS, ci);
 
-    return {
+    const response = {
       ok: true,
       action: action,
       runner: runner,
@@ -215,6 +215,41 @@ function apiCheckin(p) {
       a1_count: a1Count + (cp === 'a1' ? 1 : 0),
       a2_count: a2Count + (cp === 'a2' ? 1 : 0),
     };
+
+    // Finisher stats: rank within distance, total time, pace, full timeline.
+    if (action === 'finished') {
+      const myFinishTs = Number(ci.timestamp);
+      const myStart = checkins.find(function (c) { return c.cp === 'start'; });
+      const startTs = myStart ? Number(myStart.timestamp) : null;
+      response.start_at = startTs;
+      response.finish_at = myFinishTs;
+      response.total_time_ms = startTs ? (myFinishTs - startTs) : null;
+      response.distance_km = parseInt(runner.distance_current, 10) || null;
+
+      // Rank: count finishers in the same distance bucket with an earlier
+      // finish-checkin timestamp (or same ts but earlier id, deterministic tie-break).
+      const allCheckins = listAllCheckins();
+      const allRunners = listRunners();
+      const sameDistFinishes = [];
+      allRunners.forEach(function (r) {
+        if (r.distance_current !== runner.distance_current) return;
+        const fc = allCheckins.find(function (c) {
+          return c.runner_id === r.id && c.cp === 'finish';
+        });
+        if (fc) sameDistFinishes.push({ id: r.id, ts: Number(fc.timestamp) });
+      });
+      sameDistFinishes.sort(function (a, b) { return a.ts - b.ts || a.id.localeCompare(b.id); });
+      const myIdx = sameDistFinishes.findIndex(function (x) { return x.id === runner.id; });
+      response.rank = myIdx >= 0 ? myIdx + 1 : sameDistFinishes.length;
+      response.total_finishers = sameDistFinishes.length;
+
+      // Timeline: all checkins for this runner, chronological, including this one.
+      response.timeline = checkins.concat([ci]).map(function (c) {
+        return { cp: c.cp, timestamp: Number(c.timestamp), action: c.action };
+      });
+    }
+
+    return response;
   } finally {
     lock.releaseLock();
   }

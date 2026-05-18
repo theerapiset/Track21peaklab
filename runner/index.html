@@ -22,6 +22,16 @@
       -moz-osx-font-smoothing: grayscale;
     }
     * { box-sizing: border-box; }
+    /* Print-as-certificate styling — keeps brand colors, removes the
+       Save/Share buttons and the medal-pickup banner. */
+    @media print {
+      @page { size: A4 portrait; margin: 12mm; }
+      body { background: #fff !important; }
+      body.trt-print-cert button { display: none !important; }
+    }
+    @media print {
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    }
   </style>
 </head>
 <body>
@@ -37,9 +47,9 @@
   <div id="root"></div>
 
   <!-- Shared API client + RA palette + helpers · ?v cache-busts CDN -->
-  <script src="../src/api.js?v=7"></script>
-  <script type="text/babel" src="../src/runner-app.jsx?v=7"></script>
-  <script type="text/babel" src="../src/runner-live.jsx?v=7"></script>
+  <script src="../src/api.js?v=8"></script>
+  <script type="text/babel" src="../src/runner-app.jsx?v=8"></script>
+  <script type="text/babel" src="../src/runner-live.jsx?v=8"></script>
 
   <script type="text/babel">
     function readParam(name, fallback) {

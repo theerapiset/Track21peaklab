@@ -148,7 +148,10 @@ function LiveRunnerApp({ lang = 'th', cp: cpProp = 'a1', showChrome = true }) {
             onDnf={() => setMode('dnf-form')}/>
         )}
 
-        {mode === 'success' && identity && lastResult && (
+        {mode === 'success' && identity && lastResult && lastResult.action === 'finished' && (
+          <FinishPanel th={th} runner={identity} result={lastResult}/>
+        )}
+        {mode === 'success' && identity && lastResult && lastResult.action !== 'finished' && (
           <SuccessPanel th={th} runner={identity} cp={cp} cpLabel={cpLabel}
             result={lastResult}/>
         )}
@@ -454,6 +457,224 @@ function SuccessPanel({ th, runner, cp, cpLabel, result }) {
           {th ? 'ระบบบันทึกแล้ว · เก็บหน้านี้ไว้ก็ได้' : 'Saved · you can keep this page'}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Finish celebration ─────────────────────────────────────────────────
+
+const SEMANTIC_CP_LABEL = {
+  start:   { th: 'จุดสตาร์ท',  en: 'Start' },
+  a1_out:  { th: 'A1 · ขาไป',  en: 'A1 outbound' },
+  a2_in:   { th: 'A2 · ขึ้นเขา', en: 'A2 uphill' },
+  a2_out:  { th: 'A2 · ลงเขา', en: 'A2 downhill' },
+  a1_in:   { th: 'A1 · ขากลับ', en: 'A1 return' },
+  finish:  { th: 'เส้นชัย',     en: 'Finish' },
+};
+
+function semanticForTimeline(items) {
+  // Map raw cp ids (start/a1/a2/finish) to semantic labels by occurrence order.
+  const counts = { a1: 0, a2: 0 };
+  return items.map(function (c) {
+    let id = c.cp;
+    if (c.cp === 'a1') { id = counts.a1 === 0 ? 'a1_out' : 'a1_in'; counts.a1++; }
+    else if (c.cp === 'a2') { id = counts.a2 === 0 ? 'a2_in' : 'a2_out'; counts.a2++; }
+    return { id: id, ts: c.timestamp, action: c.action };
+  });
+}
+
+function fmtElapsed(ms) {
+  if (!ms || ms < 0) return '—';
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  return (h > 0 ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(r).padStart(2, '0');
+}
+
+function fmtClockOfDay(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function FinishPanel({ th, runner, result }) {
+  const totalMs = Number(result.total_time_ms) || 0;
+  const distanceKm = Number(result.distance_km) || parseInt(runner.distance_current, 10) || 0;
+  const paceMinPerKm = distanceKm > 0 ? (totalMs / 60000) / distanceKm : 0;
+  const paceMm = Math.floor(paceMinPerKm);
+  const paceSs = Math.round((paceMinPerKm - paceMm) * 60);
+  const rank = Number(result.rank) || 0;
+  const totalFin = Number(result.total_finishers) || rank;
+  const wasAdjusted = runner.distance_original && runner.distance_original !== runner.distance_current;
+  const timeline = semanticForTimeline(result.timeline || []);
+
+  async function handleShare() {
+    const text = th
+      ? `${runner.name} เข้าเส้นชัย ${runner.distance_current} ในเวลา ${fmtElapsed(totalMs)} · ลำดับที่ ${rank}/${totalFin} · Rayong Trail 2026`
+      : `${runner.name} finished ${runner.distance_current} in ${fmtElapsed(totalMs)} · rank ${rank}/${totalFin} · Rayong Trail 2026`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Rayong Trail · Finish', text: text, url: window.location.origin });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        alert(th ? 'คัดลอกข้อความแล้ว · นำไปแชร์ได้' : 'Copied to clipboard');
+      }
+    } catch (_) { /* user cancelled */ }
+  }
+
+  function handleSavePdf() {
+    document.body.classList.add('trt-print-cert');
+    window.print();
+    setTimeout(function () { document.body.classList.remove('trt-print-cert'); }, 500);
+  }
+
+  return (
+    <div style={{ background: '#fafaf8' }}>
+      {/* Hero */}
+      <div style={{ background: 'linear-gradient(180deg, ' + RA.brand + ' 0%, ' + RA.brandDk + ' 100%)',
+        padding: '28px 24px 36px', color: '#fff', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, opacity: 0.08, pointerEvents: 'none',
+          backgroundImage: 'radial-gradient(circle at 20% 30%, #fff 1px, transparent 1.5px), radial-gradient(circle at 70% 60%, #fff 1px, transparent 1.5px), radial-gradient(circle at 40% 80%, #fff 1px, transparent 1.5px)',
+          backgroundSize: '60px 60px, 40px 40px, 80px 80px' }}/>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, position: 'relative' }}>
+          <img src="../assets/rayong-trail-logo.jpg" alt=""
+            style={{ width: 42, height: 'auto', borderRadius: 6 }}/>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>Rayong Trail Running</div>
+            <div style={{ fontFamily: RA.mono, fontSize: 9, letterSpacing: '0.14em', opacity: 0.7 }}>
+              2026 · FINISHER
+            </div>
+          </div>
+        </div>
+        <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 1, position: 'relative',
+          fontStyle: 'italic' }}>
+          🏁 {runner.name}!
+        </div>
+        <div style={{ marginTop: 10, fontSize: 14, opacity: 0.92, position: 'relative' }}>
+          {th
+            ? `เข้าเส้นชัย ${runner.distance_current} สำเร็จ! ยอดเยี่ยมมาก 👏`
+            : `Finished ${runner.distance_current}! Outstanding 👏`}
+        </div>
+      </div>
+
+      {/* Big time card */}
+      <div style={{ padding: '0 20px', marginTop: -20, position: 'relative' }}>
+        <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${RA.border}`,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.06)', padding: '22px 20px' }}>
+          <div style={{ fontFamily: RA.mono, fontSize: 10, letterSpacing: '0.12em',
+            textTransform: 'uppercase', color: RA.muted, textAlign: 'center' }}>
+            {th ? 'เวลาทางการ' : 'Official time'}
+          </div>
+          <div style={{ fontSize: 48, fontWeight: 700, letterSpacing: '-0.03em',
+            color: RA.text, textAlign: 'center', marginTop: 4, fontStyle: 'italic',
+            fontVariantNumeric: 'tabular-nums' }}>
+            {fmtElapsed(totalMs)}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14,
+            marginTop: 18, paddingTop: 16, borderTop: `1px solid ${RA.border}` }}>
+            <Stat label={th ? 'ระยะ' : 'Distance'}
+              value={runner.distance_current}/>
+            <Stat label={th ? 'เพซเฉลี่ย' : 'Avg pace'}
+              value={paceMm > 0 ? `${paceMm}'${String(paceSs).padStart(2,'0')}"` : '—'}
+              hint={th ? '/กม.' : '/km'}/>
+            <Stat label={th ? 'ลำดับ' : 'Rank'}
+              value={rank > 0 ? `#${rank}` : '—'}
+              hint={totalFin > 0 ? `/ ${totalFin}` : ''}/>
+          </div>
+        </div>
+      </div>
+
+      {/* Auto-adjust note */}
+      {wasAdjusted && (
+        <div style={{ margin: '16px 20px 0', padding: '12px 14px',
+          background: '#fff7e6', border: '1px solid #f6c66a', borderRadius: 8 }}>
+          <div style={{ fontFamily: RA.mono, fontSize: 10, letterSpacing: '0.08em',
+            textTransform: 'uppercase', color: '#92400e' }}>🛡 ปรับระยะอัตโนมัติ</div>
+          <div style={{ fontSize: 13, color: '#78350f', marginTop: 4, lineHeight: 1.5 }}>
+            {th
+              ? `จบที่ ${runner.distance_current} · ลงทะเบียนไว้ ${runner.distance_original} · ระบบปรับตามจุดที่ผ่านจริง`
+              : `Finished ${runner.distance_current} · registered ${runner.distance_original}`}
+          </div>
+        </div>
+      )}
+
+      {/* Timeline */}
+      <div style={{ padding: '20px' }}>
+        <div style={{ fontFamily: RA.mono, fontSize: 10, letterSpacing: '0.12em',
+          textTransform: 'uppercase', color: RA.muted, marginBottom: 10 }}>
+          {th ? 'ไทม์ไลน์' : 'Timeline'}
+        </div>
+        <div style={{ background: '#fff', border: `1px solid ${RA.border}`,
+          borderRadius: 8, overflow: 'hidden' }}>
+          {timeline.map(function (it, i) {
+            const lbl = SEMANTIC_CP_LABEL[it.id] || { th: it.id, en: it.id };
+            const splitMs = i > 0 ? (it.ts - timeline[0].ts) : 0;
+            const isFinish = it.id === 'finish';
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12,
+                padding: '12px 14px',
+                borderTop: i ? `1px solid ${RA.border}` : 'none',
+                background: isFinish ? '#ecfdf5' : '#fff' }}>
+                <div style={{ width: 26, height: 26, borderRadius: 999,
+                  background: isFinish ? RA.brand : RA.border, color: isFinish ? '#fff' : RA.muted,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 700 }}>
+                  {isFinish ? '🏁' : i + 1}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: RA.text }}>
+                    {th ? lbl.th : lbl.en}
+                  </div>
+                  <div style={{ fontFamily: RA.mono, fontSize: 11, color: RA.muted, marginTop: 2 }}>
+                    {fmtClockOfDay(it.ts)}{i > 0 ? ` · +${fmtElapsed(splitMs)}` : ''}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Medal callout */}
+      <div style={{ margin: '4px 20px 16px', padding: '14px 16px',
+        background: '#ecfdf5', border: `1px solid #6ee7b7`, borderRadius: 8,
+        display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ fontSize: 28 }}>🏅</div>
+        <div style={{ fontSize: 13, color: RA.text, lineHeight: 1.5 }}>
+          {th
+            ? <>รับเหรียญที่<b> โต๊ะข้างเส้นชัย</b> · โชว์หน้านี้ให้ทีมงาน</>
+            : <>Pick up your medal at the <b>finish table</b> · show this page to staff</>}
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <PrimaryButton onClick={handleShare}
+          label={th ? '📤 แชร์ผลวิ่ง' : '📤 Share result'}/>
+        <SecondaryButton onClick={handleSavePdf}
+          label={th ? '🖨 บันทึกใบประกาศ (Save as PDF)' : '🖨 Save certificate (Save as PDF)'}/>
+      </div>
+
+      {/* Closing line */}
+      <div style={{ padding: '0 20px 28px', textAlign: 'center',
+        fontSize: 13, color: RA.muted, lineHeight: 1.55 }}>
+        {th
+          ? 'ขอบคุณที่มาวิ่งด้วยกัน · พักผ่อน ดื่มน้ำเยอะๆ แล้วเจอกันรอบหน้านะ 🌲'
+          : 'Thanks for running with us · rest, hydrate, see you next time 🌲'}
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, hint }) {
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ fontFamily: RA.mono, fontSize: 9, letterSpacing: '0.08em',
+        textTransform: 'uppercase', color: RA.muted }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: RA.text,
+        marginTop: 4, letterSpacing: '-0.01em' }}>{value}</div>
+      {hint && <div style={{ fontFamily: RA.mono, fontSize: 10, color: RA.muted, marginTop: 1 }}>{hint}</div>}
     </div>
   );
 }
