@@ -654,6 +654,13 @@ function FinishPanel({ th, runner, result }) {
           label={th ? '📤 แชร์ผลวิ่ง' : '📤 Share result'}/>
         <SecondaryButton onClick={handleSavePdf}
           label={th ? '🖨 บันทึกใบประกาศ (Save as PDF)' : '🖨 Save certificate (Save as PDF)'}/>
+        <a href="../results/" style={{
+          textAlign: 'center', padding: '12px', textDecoration: 'none',
+          fontFamily: RA.mono, fontSize: 11, letterSpacing: '0.06em',
+          textTransform: 'uppercase', fontWeight: 600, color: RA.brand,
+        }}>
+          {th ? '📊 ดูผลทั้งหมด · นักวิ่งทุกคน' : '📊 View all results'}
+        </a>
       </div>
 
       {/* Closing line */}
