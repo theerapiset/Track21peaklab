@@ -88,7 +88,7 @@
 <body>
   <div class="controls">
     <label>Base URL</label>
-    <input id="base" type="url" placeholder="https://your-domain.example/runner/index.html"/>
+    <input id="base" type="url" value="https://rayong-trail.pages.dev/runner/" placeholder="https://your-domain.example/runner/"/>
     <button id="apply">Update QR</button>
     <button onclick="window.print()">🖨 Print</button>
   </div>
@@ -167,8 +167,8 @@
       const base = document.getElementById('base').value.trim();
       render(base);
     });
-    // Initial render with placeholder URLs
-    render('');
+    // Initial render — uses the value baked into the input by deploy bundle
+    render(document.getElementById('base').value.trim());
   </script>
 </body>
 </html>
