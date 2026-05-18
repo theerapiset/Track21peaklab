@@ -365,7 +365,8 @@ function RecognizedPanel({ th, runner, cp, cpLabel, onConfirm, onNotMe, onDnf, e
 }
 
 function RunnerCard({ th, runner, cpLabel, cp }) {
-  const phoneTail = (runner.phone || '').slice(-4);
+  // Sheets can return phone as a number — coerce before slicing.
+  const phoneTail = String(runner.phone || '').slice(-4);
   return (
     <div style={{ background: '#fff', border: `1px solid ${RA.border}`,
       borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
