@@ -725,21 +725,40 @@ function Dashboard({ scenario, snap: providedSnap, t, lang, layout = 'hybrid', c
             </div>
           </div>
           <div style={{ width: 1, height: 30, background: D.border }}/>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '6px 12px', border: `1px solid ${D.border}`,
-            borderRadius: 2,
-          }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99,
-              background: counts.alerts > 0 ? D.alert : D.brand,
-              boxShadow: counts.alerts > 0 ? '0 0 0 3px rgba(220,38,38,0.15)' : '0 0 0 3px rgba(45,106,79,0.18)',
-            }}/>
-            <span style={{ fontFamily: D.mono, fontSize: 11,
-              letterSpacing: '0.06em', textTransform: 'uppercase',
-              color: counts.alerts > 0 ? D.alert : D.text, fontWeight: 600 }}>
-              {counts.alerts > 0 ? `${counts.alerts} ${t('flag_alert')}` : t('flag_ok')}
-            </span>
-          </div>
+          {snap._systemState === 'closed' ? (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '6px 12px', border: `1px solid ${D.alert}`,
+              background: 'rgba(220,38,38,0.06)',
+              borderRadius: 2,
+            }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99,
+                background: D.alert,
+                boxShadow: '0 0 0 3px rgba(220,38,38,0.15)',
+              }}/>
+              <span style={{ fontFamily: D.mono, fontSize: 11,
+                letterSpacing: '0.06em', textTransform: 'uppercase',
+                color: D.alert, fontWeight: 700 }}>
+                🔒 ระบบปิด
+              </span>
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '6px 12px', border: `1px solid ${D.border}`,
+              borderRadius: 2,
+            }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99,
+                background: counts.alerts > 0 ? D.alert : D.brand,
+                boxShadow: counts.alerts > 0 ? '0 0 0 3px rgba(220,38,38,0.15)' : '0 0 0 3px rgba(45,106,79,0.18)',
+              }}/>
+              <span style={{ fontFamily: D.mono, fontSize: 11,
+                letterSpacing: '0.06em', textTransform: 'uppercase',
+                color: counts.alerts > 0 ? D.alert : D.text, fontWeight: 600 }}>
+                {counts.alerts > 0 ? `${counts.alerts} ${t('flag_alert')}` : t('flag_ok')}
+              </span>
+            </div>
+          )}
         </div>
       </header>
 

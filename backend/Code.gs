@@ -361,7 +361,8 @@ function apiState(p) {
   const runners = listRunners();
   const checkins = listAllCheckins();
   const dnf = listAllDnf();
-  return { ok: true, time: now(), runners: runners, checkins: checkins, dnf: dnf };
+  return { ok: true, time: now(), state: liveState(),
+    runners: runners, checkins: checkins, dnf: dnf };
 }
 
 // ───────────────────────── API: admin ─────────────────────────

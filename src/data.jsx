@@ -437,6 +437,7 @@ function buildSnapshotFromLiveState(state, raceStartMs) {
     runners: runners,
     _live: true,
     _serverTime: nowMs,
+    _systemState: state && state.state ? state.state : 'open',
   };
 }
 
