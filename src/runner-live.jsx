@@ -532,9 +532,21 @@ function FinishPanel({ th, runner, result }) {
   }
 
   function handleSavePdf() {
-    document.body.classList.add('trt-print-cert');
-    window.print();
-    setTimeout(function () { document.body.classList.remove('trt-print-cert'); }, 500);
+    // Stash the finish payload so the standalone certificate page can render it.
+    try {
+      localStorage.setItem('trt.finish.result', JSON.stringify({
+        runner: runner,
+        total_time_ms: result.total_time_ms,
+        rank: result.rank,
+        total_finishers: result.total_finishers,
+        finish_at: result.finish_at,
+        start_at: result.start_at,
+        distance_km: result.distance_km,
+        timeline: result.timeline,
+      }));
+    } catch (_) {}
+    // Certificate is at the site root; runner page lives under /runner/.
+    window.open('../certificate.html', '_blank');
   }
 
   return (
