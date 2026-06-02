@@ -469,7 +469,236 @@ function SuccessPanel({ th, runner, cp, cpLabel, result }) {
   );
 }
 
-// ─── Finish celebration ─────────────────────────────────────────────────
+// ─── Shareable photo composer ───────────────────────────────────────────
+// Loads a user-picked photo + the Rayong Trail logo, draws a square 1080×1080
+// canvas with stats overlay, exports as JPEG Blob/URL so the runner can share
+// it via the Web Share API or download it to their photo library.
+
+function loadImage(src, opts) {
+  return new Promise(function (resolve, reject) {
+    const img = new Image();
+    if (opts && opts.crossOrigin) img.crossOrigin = opts.crossOrigin;
+    img.onload = function () { resolve(img); };
+    img.onerror = function (e) { reject(e); };
+    img.src = src;
+  });
+}
+
+function drawCover(ctx, img, x, y, w, h) {
+  // object-fit: cover — fill rect, crop center to preserve aspect
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  const r = Math.max(w / iw, h / ih);
+  const dw = iw * r, dh = ih * r;
+  const dx = x + (w - dw) / 2;
+  const dy = y + (h - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
+}
+
+function fmtComposerElapsed(ms) {
+  if (!ms || ms < 0) return '—';
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  return (h > 0 ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(r).padStart(2, '0');
+}
+
+function fmtComposerPace(ms, km) {
+  if (!ms || !km) return '—';
+  const min = ms / 60000 / km;
+  const mm = Math.floor(min);
+  const ss = Math.round((min - mm) * 60);
+  return mm + "'" + String(ss).padStart(2, '0') + '"';
+}
+
+function fmtComposerThaiDate(ts) {
+  const months = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.',
+                  'ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const d = ts ? new Date(Number(ts)) : new Date();
+  return d.getDate() + ' ' + months[d.getMonth()] + ' ' + (d.getFullYear() + 543);
+}
+
+async function composeFinisherImage(photoFile, runner, result) {
+  const W = 1080, H = 1080;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  // Background: white fallback if photo somehow fails
+  ctx.fillStyle = '#1f4d39';
+  ctx.fillRect(0, 0, W, H);
+
+  // 1. Background photo (respect EXIF rotation via createImageBitmap when available)
+  let photo;
+  try {
+    if (typeof createImageBitmap === 'function') {
+      photo = await createImageBitmap(photoFile, { imageOrientation: 'from-image' });
+    } else {
+      photo = await loadImage(URL.createObjectURL(photoFile));
+    }
+  } catch (_) {
+    photo = await loadImage(URL.createObjectURL(photoFile));
+  }
+  drawCover(ctx, photo, 0, 0, W, H);
+
+  // 2. Bottom-fade dark gradient for legibility of the overlay text
+  const grad = ctx.createLinearGradient(0, H * 0.35, 0, H);
+  grad.addColorStop(0,    'rgba(0,0,0,0)');
+  grad.addColorStop(0.55, 'rgba(0,0,0,0.45)');
+  grad.addColorStop(1,    'rgba(0,0,0,0.88)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // 3. Top brand bar — logo + Rayong Trail
+  try {
+    const logo = await loadImage('../assets/rayong-trail-logo.jpg', { crossOrigin: 'anonymous' });
+    // Drop shadow behind the logo so it pops on bright photos
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 16;
+    // Round-corner clip for the logo
+    const lx = 40, ly = 40, ls = 96;
+    const r = 14;
+    ctx.beginPath();
+    ctx.moveTo(lx + r, ly);
+    ctx.arcTo(lx + ls, ly,       lx + ls, ly + ls, r);
+    ctx.arcTo(lx + ls, ly + ls,  lx,      ly + ls, r);
+    ctx.arcTo(lx,      ly + ls,  lx,      ly,      r);
+    ctx.arcTo(lx,      ly,       lx + ls, ly,      r);
+    ctx.closePath();
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.clip();
+    ctx.drawImage(logo, lx, ly, ls, ls);
+    ctx.restore();
+  } catch (_) { /* fallback: no logo — keep going */ }
+
+  // Brand wordmark
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 12;
+  ctx.font = 'italic 700 44px "Playfair Display", "Georgia", "Noto Sans Thai", serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText('Rayong Trail', 160, 78);
+  ctx.font = '500 18px "Geist Mono", ui-monospace, monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillText('2026 · FINISHER', 160, 116);
+  ctx.shadowBlur = 0;
+
+  // 4. Bottom overlay — explicit baselines stacked from the bottom up to
+  // avoid overlap between the big italic name and the achievement line.
+  const padL = 56, padR = 56;
+  const maxTextWidth = W - padL - padR;
+  const distKm = parseInt(runner.distance_current, 10) || (result && result.distance_km) || 0;
+  const tStr = fmtComposerElapsed(result && result.total_time_ms);
+  const pStr = fmtComposerPace(result && result.total_time_ms, distKm);
+  const rStr = (result && result.rank) ? '#' + result.rank : '—';
+
+  // Pre-compute the name size so we know how much vertical room it needs.
+  let nameSize = 84;
+  ctx.font = 'italic 800 ' + nameSize + 'px "Playfair Display","Noto Sans Thai","Georgia",serif';
+  while (ctx.measureText(runner.name || '').width > maxTextWidth && nameSize > 40) {
+    nameSize -= 4;
+    ctx.font = 'italic 800 ' + nameSize + 'px "Playfair Display","Noto Sans Thai","Georgia",serif';
+  }
+
+  // Anchor each row at an explicit baseline (counting up from the bottom).
+  const dateY     = H - 56;
+  const dividerY  = dateY - 30;
+  const statLblY  = dividerY - 30;
+  const statValY  = statLblY - 32;
+  const achieveY  = statValY - 68;     // baseline of the achievement line
+  const nameY     = achieveY - 36;     // baseline of the big italic name
+  const nameTop   = nameY - nameSize * 0.78;
+  const kickerY   = nameTop - 14;      // baseline of the kicker above the name
+
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+
+  // Footer date + url
+  ctx.font = '500 22px "Geist Mono", ui-monospace, monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillText(fmtComposerThaiDate(result && result.finish_at), padL, dateY);
+  ctx.textAlign = 'right';
+  ctx.fillText('RAYONGTRAIL.RUN', W - padR, dateY);
+
+  // Divider
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padL, dividerY); ctx.lineTo(W - padR, dividerY); ctx.stroke();
+
+  // Stats row
+  const stats = [
+    { lbl: 'TIME', val: tStr },
+    { lbl: 'PACE', val: pStr },
+    { lbl: 'RANK', val: rStr },
+  ];
+  const colW = (W - padL - padR) / 3;
+  stats.forEach(function (s, i) {
+    const cx = padL + colW * i + colW / 2;
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 12;
+    ctx.fillStyle = '#fff';
+    ctx.font = 'italic 800 56px "Playfair Display","Georgia",serif';
+    ctx.fillText(s.val, cx, statValY);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.font = '600 18px "Geist Mono", ui-monospace, monospace';
+    ctx.fillText(s.lbl, cx, statLblY);
+  });
+
+  // Achievement line
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 10;
+  ctx.font = '500 26px "Geist", "Noto Sans Thai", sans-serif';
+  ctx.fillText('เข้าเส้นชัยระยะ ' + (runner.distance_current || '') + ' ในเวลา ' + tStr,
+               padL, achieveY);
+
+  // Big italic name
+  ctx.font = 'italic 800 ' + nameSize + 'px "Playfair Display","Noto Sans Thai","Georgia",serif';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 18;
+  ctx.fillText(runner.name || '', padL, nameY);
+  ctx.shadowBlur = 0;
+
+  // Kicker above the name
+  ctx.font = '600 20px "Geist Mono", ui-monospace, monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillText('CERTIFICATE · FINISHER', padL, kickerY);
+
+  // 5. Top-right rank pill (only if top-3)
+  if (result && result.rank && result.rank <= 3) {
+    const medals = { 1: 'GOLD · #1', 2: 'SILVER · #2', 3: 'BRONZE · #3' };
+    const label = medals[result.rank];
+    ctx.font = '700 22px "Geist Mono", ui-monospace, monospace';
+    const pw = ctx.measureText(label).width + 40;
+    const ph = 44;
+    const px = W - 40 - pw, py = 40;
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 1.5;
+    const rr = 22;
+    ctx.beginPath();
+    ctx.moveTo(px + rr, py);
+    ctx.arcTo(px + pw, py,       px + pw, py + ph, rr);
+    ctx.arcTo(px + pw, py + ph,  px,      py + ph, rr);
+    ctx.arcTo(px,      py + ph,  px,      py,      rr);
+    ctx.arcTo(px,      py,       px + pw, py,      rr);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, px + pw / 2, py + ph / 2 + 1);
+  }
+
+  return new Promise(function (resolve) {
+    canvas.toBlob(function (blob) {
+      const url = URL.createObjectURL(blob);
+      resolve({ blob: blob, url: url });
+    }, 'image/jpeg', 0.92);
+  });
+}
 
 const SEMANTIC_CP_LABEL = {
   start:   { th: 'จุดสตาร์ท',  en: 'Start' },
@@ -547,6 +776,59 @@ function FinishPanel({ th, runner, result }) {
     } catch (_) {}
     // Certificate is at the site root; runner page lives under /runner/.
     window.open('../certificate.html', '_blank');
+  }
+
+  // ── Shareable photo composer state ──────────────────────────────
+  const [composing, setComposing] = useS2(false);
+  const [composeErr, setComposeErr] = useS2(null);
+  const [shareImg, setShareImg] = useS2(null); // { blob, url }
+  const fileInputRef = useR2(null);
+
+  async function handlePickPhoto(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // allow re-picking the same file
+    if (!file) return;
+    setComposing(true); setComposeErr(null);
+    try {
+      const out = await composeFinisherImage(file, runner, result);
+      // Free the previous object URL if any
+      if (shareImg && shareImg.url) { try { URL.revokeObjectURL(shareImg.url); } catch (_) {} }
+      setShareImg(out);
+    } catch (err) {
+      console.error('[trt] compose failed', err);
+      setComposeErr(th ? 'สร้างรูปไม่สำเร็จ · ลองรูปอื่น' : 'Could not compose image · try another photo');
+    } finally {
+      setComposing(false);
+    }
+  }
+
+  async function handleShareImage() {
+    if (!shareImg) return;
+    const filename = 'rayong-trail-' + (runner.name || 'finisher').replace(/\s+/g, '-') + '.jpg';
+    const file = new File([shareImg.blob], filename, { type: 'image/jpeg' });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Rayong Trail · Finish',
+          text: (runner.name || '') + ' · ' + (runner.distance_current || '') +
+            (result && result.total_time_ms ? ' · ' + fmtComposerElapsed(result.total_time_ms) : ''),
+        });
+        return;
+      }
+    } catch (_) { /* user cancelled or share failed — fall through to download */ }
+    handleDownloadImage();
+  }
+
+  function handleDownloadImage() {
+    if (!shareImg) return;
+    const filename = 'rayong-trail-' + (runner.name || 'finisher').replace(/\s+/g, '-') + '.jpg';
+    const a = document.createElement('a');
+    a.href = shareImg.url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   return (
@@ -668,12 +950,84 @@ function FinishPanel({ th, runner, result }) {
         </div>
       </div>
 
-      {/* Action buttons */}
+      {/* ── Photo composer · pick a photo → instant shareable image ── */}
+      <div style={{ padding: '0 20px 16px' }}>
+        <div style={{ fontFamily: RA.mono, fontSize: 10, letterSpacing: '0.12em',
+          textTransform: 'uppercase', color: RA.muted, marginBottom: 10 }}>
+          {th ? 'รูปภาพแชร์ · พร้อมสถิติ + โลโก้' : 'Share image · with stats + logo'}
+        </div>
+
+        {/* Hidden file input — opens Photo library on iOS/Android */}
+        <input ref={fileInputRef} type="file" accept="image/*"
+          onChange={handlePickPhoto} style={{ display: 'none' }}/>
+
+        {!shareImg ? (
+          <button onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            disabled={composing} style={{
+              width: '100%', padding: '20px', cursor: composing ? 'wait' : 'pointer',
+              background: '#fff', border: '2px dashed ' + RA.borderS, borderRadius: 10,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+              fontFamily: th ? '"Noto Sans Thai", ' + RA.font : RA.font,
+            }}>
+              <div style={{ fontSize: 28 }}>{composing ? '⏳' : '🖼'}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: RA.text }}>
+                {composing
+                  ? (th ? 'กำลังสร้างรูป…' : 'Composing…')
+                  : (th ? '+ เลือกรูปจาก Photo Library' : '+ Add from Photo Library')}
+              </div>
+              <div style={{ fontSize: 12, color: RA.muted, textAlign: 'center', lineHeight: 1.4 }}>
+                {th
+                  ? 'ระบบจะใส่ชื่อ · สถิติ · โลโก้ · วันที่ ให้อัตโนมัติ'
+                  : 'We add your name, stats, logo, and date on top'}
+              </div>
+            </button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <img src={shareImg.url} alt=""
+              style={{ width: '100%', height: 'auto', display: 'block',
+                borderRadius: 10, border: `1px solid ${RA.border}` }}/>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleShareImage} style={{
+                flex: 1, padding: '14px', background: RA.brand, color: '#fff',
+                border: 'none', borderRadius: 8, fontFamily: RA.font, fontSize: 15,
+                fontWeight: 600, cursor: 'pointer',
+              }}>{th ? '📤 แชร์ / Save' : '📤 Share / Save'}</button>
+              <button onClick={handleDownloadImage} style={{
+                padding: '14px 16px', background: '#fff', color: RA.brand,
+                border: `1px solid ${RA.brand}`, borderRadius: 8,
+                fontFamily: RA.font, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              }}>{th ? '💾 บันทึก' : '💾 Save'}</button>
+            </div>
+            <button onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              style={{
+                padding: '10px', background: 'transparent', border: 'none',
+                color: RA.muted, fontFamily: RA.mono, fontSize: 11,
+                letterSpacing: '0.06em', textTransform: 'uppercase',
+                cursor: 'pointer', textDecoration: 'underline',
+              }}>{th ? '↻ เปลี่ยนรูป' : '↻ Change photo'}</button>
+            <div style={{ fontSize: 11, color: RA.muted, lineHeight: 1.5,
+              textAlign: 'center' }}>
+              {th
+                ? '📱 บนมือถือ · ปุ่ม "แชร์" จะเปิด iOS/Android share sheet ให้เลือก save to Photos หรือส่งใน social media'
+                : '📱 On mobile, Share opens the system share sheet for save-to-Photos or social posting'}
+            </div>
+          </div>
+        )}
+        {composeErr && (
+          <div style={{ marginTop: 10, padding: '10px 12px', background: '#fee2e2',
+            border: '1px solid #fca5a5', borderRadius: 6,
+            fontFamily: RA.mono, fontSize: 11, color: '#7f1d1d' }}>
+            ⚠ {composeErr}
+          </div>
+        )}
+      </div>
+
+      {/* ── Other actions ───────────────────────────────────────────── */}
       <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <PrimaryButton onClick={handleShare}
-          label={th ? '📤 แชร์ผลวิ่ง' : '📤 Share result'}/>
+        <SecondaryButton onClick={handleShare}
+          label={th ? '📤 แชร์ผลวิ่ง (ข้อความ)' : '📤 Share result (text)'}/>
         <SecondaryButton onClick={handleSavePdf}
-          label={th ? '🖨 บันทึกใบประกาศ (Save as PDF)' : '🖨 Save certificate (Save as PDF)'}/>
+          label={th ? '🖨 บันทึกใบประกาศ A4 (PDF)' : '🖨 Save A4 certificate (PDF)'}/>
         <a href="../results/" style={{
           textAlign: 'center', padding: '12px', textDecoration: 'none',
           fontFamily: RA.mono, fontSize: 11, letterSpacing: '0.06em',
